@@ -93,6 +93,29 @@ class _CounterViewState extends State<CounterView> {
                 ),
               ],
             ),
+            const SizedBox(height: 30),
+
+            // Judul riwayat
+            const Text(
+              "Riwayat Aktivitas",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Menampilkan riwayat dari controller
+            SizedBox(
+              height: 150,
+              child: ListView.builder(
+                itemCount: _controller.history.length,
+                itemBuilder: (context, index) {
+                  return Text(
+                    "- ${_controller.history[index]}",
+                    style: const TextStyle(fontSize: 14),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
