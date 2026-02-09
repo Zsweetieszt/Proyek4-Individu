@@ -58,7 +58,7 @@ class _CounterViewState extends State<CounterView> {
 
             const SizedBox(height: 20),
 
-            // Tombol increment dan decrement
+            // Tombol increment, decrement dan reset
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -80,6 +80,16 @@ class _CounterViewState extends State<CounterView> {
                     });
                   },
                   child: const Icon(Icons.add),
+                ),
+                const SizedBox(width: 20),
+                FloatingActionButton(
+                  heroTag: "reset",
+                  onPressed: () {
+                    setState(() {
+                      _controller.reset();
+                    });
+                  },
+                  child: const Icon(Icons.refresh),
                 ),
               ],
             ),
