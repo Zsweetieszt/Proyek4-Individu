@@ -9,24 +9,123 @@ class CounterView extends StatefulWidget {
 }
 
 class _CounterViewState extends State<CounterView> {
-  // Controller berisi seluruh logika aplikasi
   final CounterController _controller = CounterController();
 
   // Controller untuk TextField step
-  // Default diisi 1 agar sinkron dengan controller
   final TextEditingController _stepController =
       TextEditingController(text: '1');
+
+  // Fungsi untuk menampilkan dialog konfirmasi reset
+  Future<void> _showResetConfirmation() async {
+    // showDialog menampilkan popup dialog
+    // await menunggu hingga user memilih
+    final result = await showDialog<bool>(
+      context: context,
+      //user harus pilih tombol, tidak bisa tap di luar dialog
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.orange,
+            size: 50,
+          ),
+          title: const Text(
+            'Konfirmasi Reset',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Apakah Anda yakin ingin mereset counter ke 0?\n\nTindakan ini tidak dapat dibatalkan.',
+            textAlign: TextAlign.center,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                // Navigator.pop mengembalikan nilai false dan menutup dialog
+                Navigator.of(context).pop(false);
+              },
+              child: const Text(
+                'Batal',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Mengembalikan nilai true (user konfirmasi reset)
+                Navigator.of(context).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reset'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // Jika user memilih "Reset" (result == true)
+    if (result == true) {
+      setState(() {
+        _controller.reset();
+      });
+    }
+  }
+
+  // Mengembalikan Color yang sesuai dengan tipe aksi
+  Color _getHistoryColor(String type) {
+    switch (type) {
+      case 'add':
+        return Colors.green.shade50;
+      case 'subtract':
+        return Colors.red.shade50;
+      case 'reset':
+        return Colors.orange.shade50;
+      default:
+        return Colors.grey.shade50;
+    }
+  }
+
+  // Mengembalikan Border Color yang sesuai dengan tipe aksi
+  Color _getHistoryBorderColor(String type) {
+    switch (type) {
+      case 'add':
+        return Colors.green;
+      case 'subtract':
+        return Colors.red;
+      case 'reset':
+        return Colors.orange;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  // Mendapatkan icon berdasarkan jenis aksi
+  IconData _getHistoryIcon(String type) {
+    switch (type) {
+      case 'add':
+        return Icons.add_circle_outline;
+      case 'subtract':
+        return Icons.remove_circle_outline;
+      case 'reset':
+        return Icons.refresh;
+      default:
+        return Icons.circle_outlined;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("LogBook: Multi-Step Counter",
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.white
-        ),
+        title: const Text(
+          "LogBook: Multi-Step Counter",
+          style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
         elevation: 0,
@@ -40,7 +139,6 @@ class _CounterViewState extends State<CounterView> {
           ),
         ),
       ),
-      
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -50,20 +148,20 @@ class _CounterViewState extends State<CounterView> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Colors.purple, Colors.blue],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 5,
-                      offset: const Offset(0, 3), // changes position of shadow
-                    )
-                  ]
-                ),
+                    gradient: const LinearGradient(
+                      colors: [Colors.purple, Colors.blue],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 5,
+                        offset:
+                            const Offset(0, 3),
+                      )
+                    ]),
                 child: Column(
                   children: [
                     const Text(
@@ -90,7 +188,6 @@ class _CounterViewState extends State<CounterView> {
               const SizedBox(height: 20),
 
               // Input untuk menentukan nilai step
-              // View hanya mengirim input mentah ke controller
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -149,7 +246,6 @@ class _CounterViewState extends State<CounterView> {
                     },
                     child: const Icon(Icons.remove),
                   ),
-
                   const SizedBox(width: 20),
                   FloatingActionButton(
                     heroTag: "plus",
@@ -160,22 +256,18 @@ class _CounterViewState extends State<CounterView> {
                     },
                     child: const Icon(Icons.add),
                   ),
-                  
                   const SizedBox(width: 20),
                   FloatingActionButton(
                     heroTag: "reset",
-                    onPressed: () {
-                      setState(() {
-                        _controller.reset();
-                      });
-                    },
+                    backgroundColor: Colors.red,
+                    onPressed: _showResetConfirmation,
                     child: const Icon(Icons.refresh),
                   ),
                 ],
               ),
               const SizedBox(height: 30),
 
-              // Judul riwayat
+              // Riwayat
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -215,35 +307,42 @@ class _CounterViewState extends State<CounterView> {
                           )
                         : Column(
                             children: List.generate(
-                              _controller.history.length > 5 
-                                  ? 5 
+                              _controller.history.length > 5
+                                  ? 5
                                   : _controller.history.length,
                               (index) {
+                                final historyItem = _controller.history[index];
+                                final action = historyItem['action'] ?? '';
+                                final type = historyItem['type'] ?? '';
+
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 8),
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: _getHistoryColor(type),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: Colors.purple.withOpacity(0.2),
+                                      color: _getHistoryBorderColor(type),
+                                      width: 1.5,
                                     ),
                                   ),
                                   child: Row(
                                     children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.purple,
-                                          shape: BoxShape.circle,
-                                        ),
+                                      Icon(
+                                        _getHistoryIcon(type),
+                                        color: _getHistoryBorderColor(type),
+                                        size: 20,
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
-                                          _controller.history[index],
-                                          style: const TextStyle(fontSize: 14),
+                                          action,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: _getHistoryBorderColor(type)
+                                                .withOpacity(0.8),
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
                                     ],
