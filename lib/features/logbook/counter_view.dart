@@ -3,10 +3,7 @@ import 'counter_controller.dart';
 import '../onboarding/onboarding_view.dart';
 
 class CounterView extends StatefulWidget {
-  // 1. Menambahkan variabel username
   final String username;
-
-  // 2. Mewajibkan pengiriman data username saat dipanggil
   const CounterView({super.key, required this.username});
 
   @override
@@ -15,10 +12,29 @@ class CounterView extends StatefulWidget {
 
 class _CounterViewState extends State<CounterView> {
   final CounterController _controller = CounterController();
+  final TextEditingController _stepController = TextEditingController(text: '1');
+  
+  // State untuk menandakan apakah data sedang dimuat
+  bool _isLoading = true;
 
-  // Controller untuk TextField step
-  final TextEditingController _stepController =
-      TextEditingController(text: '1');
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  // Fungsi memuat data dari memori HP
+  void _loadInitialData() async {
+    // Panggil fungsi load di controller
+    await _controller.loadData(widget.username);
+    
+    // Setelah selesai, refresh UI
+    if (mounted) { // Cek apakah widget masih aktif
+      setState(() {
+        _isLoading = false; // Loading selesai
+      });
+    }
+  }
 
   // Fungsi untuk menampilkan dialog konfirmasi reset
   Future<void> _showResetConfirmation() async {
@@ -76,7 +92,7 @@ class _CounterViewState extends State<CounterView> {
     // Jika user memilih "Reset" (result == true)
     if (result == true) {
       setState(() {
-        _controller.reset();
+        _controller.reset(widget.username);
       });
     }
   }
@@ -154,10 +170,15 @@ class _CounterViewState extends State<CounterView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          "Logbook: ${widget.username}",
+          "Logbook: By ${widget.username}",
           style: const TextStyle(
               fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
         ),
@@ -285,21 +306,13 @@ class _CounterViewState extends State<CounterView> {
                 children: [
                   FloatingActionButton(
                     heroTag: "minus",
-                    onPressed: () {
-                      setState(() {
-                        _controller.decrement();
-                      });
-                    },
+                    onPressed: () => setState(() => _controller.decrement(widget.username)),
                     child: const Icon(Icons.remove),
                   ),
                   const SizedBox(width: 20),
                   FloatingActionButton(
                     heroTag: "plus",
-                    onPressed: () {
-                      setState(() {
-                        _controller.increment();
-                      });
-                    },
+                    onPressed: () => setState(() => _controller.increment(widget.username)),
                     child: const Icon(Icons.add),
                   ),
                   const SizedBox(width: 20),

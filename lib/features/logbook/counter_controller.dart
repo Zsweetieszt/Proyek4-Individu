@@ -1,56 +1,88 @@
+// File: lib/features/logbook/counter_controller.dart
+import 'dart:convert'; // Untuk mengubah List jadi Teks JSON
+import 'package:shared_preferences/shared_preferences.dart';
+
 class CounterController {
   int _counter = 0;
   int _step = 1;
-
-  final List<Map<String, String>> _history = [];
+  // Hapus 'final' agar bisa di-update saat load data
+  List<Map<String, String>> _history = []; 
 
   int get value => _counter;
   List<Map<String, String>> get history => List.unmodifiable(_history);
 
-  // Update nilai step 
+  // Fungsi Load Data (Dipanggil saat layar dibuka)
+  // Kita butuh 'key' yang unik per user, jadi kita minta parameter username
+  Future<void> loadData(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // 1. Ambil Angka Terakhir
+    // Key-nya misal: 'counter_admin' atau 'counter_budi'
+    _counter = prefs.getInt('counter_$username') ?? 0;
+
+    // 2. Ambil Riwayat
+    String? historyString = prefs.getString('history_$username');
+    if (historyString != null) {
+      // Ubah teks JSON kembali menjadi List
+      List<dynamic> decodedList = jsonDecode(historyString);
+      // Pastikan format datanya benar (Map<String, String>)
+      _history = decodedList.map((item) => Map<String, String>.from(item)).toList();
+    }
+  }
+
+  // Fungsi Save Data (Dipanggil setiap kali ada perubahan)
+  Future<void> _saveData(String username) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Simpan Angka
+    await prefs.setInt('counter_$username', _counter);
+    
+    // Simpan Riwayat (Ubah List jadi Teks JSON dulu)
+    String historyString = jsonEncode(_history);
+    await prefs.setString('history_$username', historyString);
+  }
+
+  // --- Fungsi Logika (Diupdate untuk auto-save) ---
+
   void updateStep(String value) {
     final parsed = int.tryParse(value);
-
-    // Validasi Nilai Step
     if (parsed != null && parsed != 0) {
       _step = parsed;
     }
   }
   
-  void increment() {
+  // Kita butuh username di sini untuk tahu data siapa yang disimpan
+  void increment(String username) {
     _counter += _step;
-    // parameter add untuk penanda ini penambahan
-    _addHistory("Menambah $_step", 'add');
+    _addHistory("Menambah $_step", 'add', username);
+    _saveData(username); // Auto Save
   }
 
-  void decrement() {
+  void decrement(String username) {
     _counter -= _step;
-    // parameter substract untuk penanda ini pengurangan
-    _addHistory("Mengurangi $_step", 'subtract');
+    _addHistory("Mengurangi $_step", 'subtract', username);
+    _saveData(username); // Auto Save
   }
 
-  void reset() {
+  void reset(String username) {
     _counter = 0;
-    // parameter reset untuk penanda ini reset
-    _addHistory("Reset counter", 'reset');
+    _addHistory("Reset counter", 'reset', username);
+    _saveData(username); // Auto Save
   }
-
-  // Menambahkan riwayat aktivitas dengan tipe dan aksi yang ditentukan
-  void _addHistory(String action, String type) {
+  
+  void _addHistory(String action, String type, String username) {
     final time = DateTime.now();
     final formattedTime =
         "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
 
-    // Menyimpan data pakai MAP
-    _history.add({
+    _history.insert(0, { // Gunakan insert(0) agar yang baru ada di atas
       'action': "$action pada jam $formattedTime",
       'type': type,
       'time': formattedTime,
     });
 
-    // Batasi riwayat hanya 5 entri terakhir
     if (_history.length > 5) {
-      _history.removeAt(0);
+      _history.removeLast();
     }
   }
 }

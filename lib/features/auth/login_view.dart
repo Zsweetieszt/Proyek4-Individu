@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; // Import untuk Timer
+import 'dart:async';
 import 'login_controller.dart';
 import '../logbook/counter_view.dart';
 
@@ -16,14 +16,14 @@ class _LoginViewState extends State<LoginView> {
   final TextEditingController _passController = TextEditingController();
 
   // State Tambahan
-  bool _isObscure = true; // Untuk Show/Hide Password
-  bool _isLocked = false; // Untuk status tombol login (Disabled/Enabled)
+  bool _isObscure = true;
+  bool _isLocked = false;
 
   void _handleLogin() {
     String user = _userController.text;
     String pass = _passController.text;
 
-    // 1. Validasi Input Kosong (Security Logic)
+    // 1. Validasi Input Kosong
     if (user.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -31,7 +31,7 @@ class _LoginViewState extends State<LoginView> {
           backgroundColor: Colors.orange,
         ),
       );
-      return; // Stop proses jika kosong
+      return;
     }
 
     // 2. Panggil Logika Login dari Controller
@@ -49,7 +49,7 @@ class _LoginViewState extends State<LoginView> {
       // Jika Gagal: Cek apakah terkunci?
       if (_controller.isLocked()) {
         setState(() {
-          _isLocked = true; // Disable tombol
+          _isLocked = true;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -63,7 +63,7 @@ class _LoginViewState extends State<LoginView> {
         // Timer 10 Detik untuk membuka kunci
         Timer(const Duration(seconds: 10), () {
           setState(() {
-            _isLocked = false; // Enable tombol kembali
+            _isLocked = false; // Aktifin tombol kembali
             _controller.resetLock(); // Reset counter di controller
           });
           ScaffoldMessenger.of(context).showSnackBar(
