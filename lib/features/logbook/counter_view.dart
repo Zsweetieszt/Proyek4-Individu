@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'counter_controller.dart';
+import '../onboarding/onboarding_view.dart';
 
 class CounterView extends StatefulWidget {
-  const CounterView({super.key});
+  // 1. Menambahkan variabel username
+  final String username;
+
+  // 2. Mewajibkan pengiriman data username saat dipanggil
+  const CounterView({super.key, required this.username});
 
   @override
   State<CounterView> createState() => _CounterViewState();
@@ -118,16 +123,52 @@ class _CounterViewState extends State<CounterView> {
     }
   }
 
+  // Fungsi Logout
+  void _handleLogout() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Konfirmasi Logout"),
+        content: const Text("Apakah Anda yakin ingin keluar?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), // Batal
+            child: const Text("Batal"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Tutup Dialog
+              // Kembali ke Onboarding dan hapus semua history halaman sebelumnya
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const OnboardingView()),
+                (route) => false,
+              );
+            },
+            child: const Text("Ya, Keluar", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "LogBook: Multi-Step Counter",
-          style: TextStyle(
+        title: Text(
+          "Logbook: ${widget.username}",
+          style: const TextStyle(
               fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _handleLogout,
+            tooltip: "Logout",
+          ),
+        ],
         elevation: 0,
         flexibleSpace: Container(
           decoration: const BoxDecoration(
@@ -145,6 +186,11 @@ class _CounterViewState extends State<CounterView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Text(
+                "Selamat Datang, ${widget.username}!",
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
