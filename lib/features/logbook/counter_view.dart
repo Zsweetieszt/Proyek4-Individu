@@ -23,6 +23,19 @@ class _CounterViewState extends State<CounterView> {
     _loadInitialData();
   }
 
+  String _getGreeting() {
+    var hour = DateTime.now().hour;
+    if (hour < 11) {
+      return 'Selamat Pagi';
+    } else if (hour < 15) {
+      return 'Selamat Siang';
+    } else if (hour < 18) {
+      return 'Selamat Sore';
+    } else {
+      return 'Selamat Malam';
+    }
+  }
+
   // Fungsi memuat data dari memori HP
   void _loadInitialData() async {
     // Panggil fungsi load di controller
@@ -207,9 +220,35 @@ class _CounterViewState extends State<CounterView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                "Selamat Datang, ${widget.username}!",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.indigo.shade100),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      _getGreeting(), // Memanggil fungsi waktu
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.indigo.shade800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.username, // Nama User
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
               Container(

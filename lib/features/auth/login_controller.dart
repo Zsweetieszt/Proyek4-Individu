@@ -2,7 +2,7 @@ class LoginController {
   final Map<String, String> _users = {
     'admin': '123',
     'mahasiswa': '123',
-    'dosen': 'admin123',
+    'budi': '123',
   };
 
   // Variabel hitung percobaan gagal
