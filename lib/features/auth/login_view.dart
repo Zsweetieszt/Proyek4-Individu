@@ -1,7 +1,9 @@
+// File: lib/features/auth/login_view.dart
+// PERUBAHAN: Import LogView menggantikan CounterView
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'login_controller.dart';
-import '../logbook/counter_view.dart';
+import '../logbook/log_view.dart'; // <-- GANTI IMPORT INI
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -15,7 +17,6 @@ class _LoginViewState extends State<LoginView> {
   final TextEditingController _userController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
 
-  // State Tambahan
   bool _isObscure = true;
   bool _isLocked = false;
 
@@ -23,7 +24,6 @@ class _LoginViewState extends State<LoginView> {
     String user = _userController.text;
     String pass = _passController.text;
 
-    // 1. Validasi Input Kosong
     if (user.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -34,23 +34,19 @@ class _LoginViewState extends State<LoginView> {
       return;
     }
 
-    // 2. Panggil Logika Login dari Controller
     bool isSuccess = _controller.login(user, pass);
 
     if (isSuccess) {
-      // Jika Sukses: Pindah Halaman
+      // PERUBAHAN: Arahkan ke LogView, bukan CounterView
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => CounterView(username: user),
+          builder: (context) => LogView(username: user), // <-- GANTI INI
         ),
       );
     } else {
-      // Jika Gagal: Cek apakah terkunci?
       if (_controller.isLocked()) {
-        setState(() {
-          _isLocked = true;
-        });
+        setState(() => _isLocked = true);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -60,11 +56,10 @@ class _LoginViewState extends State<LoginView> {
           ),
         );
 
-        // Timer 10 Detik untuk membuka kunci
         Timer(const Duration(seconds: 10), () {
           setState(() {
-            _isLocked = false; // Aktifin tombol kembali
-            _controller.resetLock(); // Reset counter di controller
+            _isLocked = false;
+            _controller.resetLock();
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -74,7 +69,6 @@ class _LoginViewState extends State<LoginView> {
           );
         });
       } else {
-        // Jika Gagal tapi belum terkunci (percobaan ke 1 atau 2)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -97,8 +91,6 @@ class _LoginViewState extends State<LoginView> {
           children: [
             const Icon(Icons.lock, size: 80, color: Colors.indigo),
             const SizedBox(height: 20),
-            
-            // Input Username
             TextField(
               controller: _userController,
               decoration: const InputDecoration(
@@ -108,33 +100,25 @@ class _LoginViewState extends State<LoginView> {
               ),
             ),
             const SizedBox(height: 16),
-            
-            // Input Password dengan Fitur Show/Hide
             TextField(
               controller: _passController,
-              obscureText: _isObscure, // Menggunakan variabel state
+              obscureText: _isObscure,
               decoration: InputDecoration(
                 labelText: "Password",
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.vpn_key),
-                // Tombol Mata (Show/Hide)
                 suffixIcon: IconButton(
                   icon: Icon(
                     _isObscure ? Icons.visibility_off : Icons.visibility,
                   ),
                   onPressed: () {
-                    setState(() {
-                      _isObscure = !_isObscure; // Toggle status
-                    });
+                    setState(() => _isObscure = !_isObscure);
                   },
                 ),
               ),
             ),
             const SizedBox(height: 24),
-            
-            // Tombol Login
             ElevatedButton(
-              // Jika _isLocked true, onPressed jadi null (tombol disabled)
               onPressed: _isLocked ? null : _handleLogin,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
