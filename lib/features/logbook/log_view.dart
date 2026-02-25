@@ -12,43 +12,42 @@ class LogView extends StatefulWidget {
 }
 
 class _LogViewState extends State<LogView> {
-  // Controller kita yang baru — reaktif dan persistent
   final LogController _controller = LogController();
-  bool _isLoading = true;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
+  // Controller untuk TextField di dialog
+  // Dibuat di level State agar bisa dipakai di add DAN edit dialog
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
 
-  // Muat data dari SharedPreferences saat pertama kali dibuka
-  void _loadData() async {
-    await _controller.loadLogs(widget.username);
-    if (mounted) {
-      setState(() => _isLoading = false);
+  // Controller untuk search bar
+  final TextEditingController _searchController = TextEditingController();
+
+  // DAFTAR KATEGORI & WARNA
+  static const List<String> _categories = [
+    'Umum', 'Organisasi', 'Tugas', 'Kuliah', 'Pribadi', 'Urgent',
+  ];
+
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'Organisasi':   return Colors.blue;
+      case 'Tugas':    return Colors.orange;
+      case 'Kuliah': return Colors.green;
+      case 'Pribadi':  return Colors.purple;
+      case 'Urgent':   return Colors.red;
+      default:         return Colors.blueGrey;
     }
   }
 
-  // DISPOSE, Bebaskan resource saat widget dihancurkan
   @override
   void dispose() {
     _controller.dispose();
+    // Dispose semua TextEditingController untuk cegah memory leak
+    _titleController.dispose();
+    _contentController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  // Format tanggal jadi lebih mudah dibaca
-  String _formatDate(DateTime dt) {
-    final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
-    ];
-    final time =
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $time';
-  }
-
-  // Sapaan berdasarkan waktu
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 11) return 'Selamat Pagi';
@@ -57,213 +56,159 @@ class _LogViewState extends State<LogView> {
     return 'Selamat Malam';
   }
 
-  // LANGKAH 4: Dialog untuk TAMBAH catatan baru
+  // DIALOG TAMBAH
   void _showAddLogDialog() {
-    // Controller khusus untuk TextField di dalam dialog
-    final titleController = TextEditingController();
-    final descController = TextEditingController();
+    String selectedCategory = 'Umum';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.add_circle, color: Colors.indigo),
-            SizedBox(width: 8),
-            Text('Tambah Catatan', style: TextStyle(fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min, // Dialog menyesuaikan isi
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: 'Judul',
-                hintText: 'Contoh: Praktikum Flutter',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                prefixIcon: const Icon(Icons.title),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Tambah Catatan Baru'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration:
+                    const InputDecoration(hintText: 'Judul Catatan'),
               ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Deskripsi',
-                hintText: 'Tulis catatan Anda...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                prefixIcon: const Icon(Icons.notes),
+              TextField(
+                controller: _contentController,
+                decoration:
+                    const InputDecoration(hintText: 'Isi Deskripsi'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 12),
+              // Dropdown Kategori
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                decoration: const InputDecoration(labelText: 'Kategori'),
+                items: _categories.map((cat) {
+                  return DropdownMenuItem(
+                    value: cat,
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 6,
+                          backgroundColor: _getCategoryColor(cat),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(cat),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setDialogState(() => selectedCategory = value!);
+                },
+              ),
+            ],
           ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.save, size: 18),
-            label: const Text('Simpan'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
             ),
-            onPressed: () {
-              final title = titleController.text.trim();
-              final desc = descController.text.trim();
-
-              // Validasi: jangan simpan jika kosong
-              if (title.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Judul tidak boleh kosong!'),
-                    backgroundColor: Colors.orange,
-                  ),
+            ElevatedButton(
+              onPressed: () {
+                // Validasi input kosong
+                if (_titleController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Judul tidak boleh kosong!'),
+                      backgroundColor: Colors.orange,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
+                // Panggil addLog di Controller
+                _controller.addLog(
+                  _titleController.text,
+                  _contentController.text,
+                  selectedCategory,
                 );
-                return;
-              }
-
-              // Panggil addLog di Controller — UI akan update OTOMATIS
-              _controller.addLog(widget.username, title, desc);
-              Navigator.pop(context);
-            },
-          ),
-        ],
+                // Bersihkan input dan tutup dialog
+                _titleController.clear();
+                _contentController.clear();
+                Navigator.pop(context);
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // LANGKAH 5: Dialog untuk EDIT catatan (pre-filled)
+  // DIALOG EDIT
   void _showEditLogDialog(int index, LogModel log) {
-    // Pre-fill TextField dengan data yang sudah ada
-    final titleController = TextEditingController(text: log.title);
-    final descController = TextEditingController(text: log.description);
+    // Pre-fill dengan data yang sudah ada
+    _titleController.text = log.title;
+    _contentController.text = log.description;
+    String selectedCategory = log.category;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.edit, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Edit Catatan', style: TextStyle(fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: 'Judul',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                prefixIcon: const Icon(Icons.title),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Catatan'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: _titleController),
+              TextField(controller: _contentController),
+              const SizedBox(height: 12),
+              // Dropdown Kategori (Homework)
+              DropdownButtonFormField<String>(
+                value: selectedCategory,
+                decoration: const InputDecoration(labelText: 'Kategori'),
+                items: _categories.map((cat) {
+                  return DropdownMenuItem(
+                    value: cat,
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 6,
+                          backgroundColor: _getCategoryColor(cat),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(cat),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setDialogState(() => selectedCategory = value!);
+                },
               ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Deskripsi',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                prefixIcon: const Icon(Icons.notes),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+            ],
           ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.update, size: 18),
-            label: const Text('Update'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
             ),
-            onPressed: () {
-              final title = titleController.text.trim();
-              final desc = descController.text.trim();
-
-              if (title.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Judul tidak boleh kosong!'),
-                    backgroundColor: Colors.orange,
-                  ),
+            ElevatedButton(
+              onPressed: () {
+                _controller.updateLog(
+                  index,
+                  _titleController.text,
+                  _contentController.text,
+                  selectedCategory,
                 );
-                return;
-              }
-
-              // Panggil updateLog — UI otomatis refresh tanpa setState!
-              _controller.updateLog(widget.username, index, title, desc);
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Dialog konfirmasi sebelum hapus
-  void _showDeleteConfirmation(int index, String title) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: Colors.red, size: 48),
-        title: const Text('Hapus Catatan?'),
-        content: Text(
-          'Catatan "$title" akan dihapus permanen.',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+                _titleController.clear();
+                _contentController.clear();
+                Navigator.pop(context);
+              },
+              child: const Text('Update'),
             ),
-            onPressed: () {
-              // Panggil removeLog — UI otomatis hilang tanpa setState!
-              _controller.removeLog(widget.username, index);
-              Navigator.pop(context);
-            },
-            child: const Text('Hapus'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // Logout
   void _handleLogout() {
     showDialog(
       context: context,
@@ -285,27 +230,17 @@ class _LogViewState extends State<LogView> {
                 (route) => false,
               );
             },
-            child:
-                const Text('Ya, Keluar', style: TextStyle(color: Colors.red)),
+            child: const Text('Ya, Keluar',
+                style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // UI utama LogView
-  // ============================================================
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Scaffold(
-      // APP BAR
       appBar: AppBar(
         title: Text(
           'Logbook: ${widget.username}',
@@ -320,10 +255,8 @@ class _LogViewState extends State<LogView> {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _handleLogout,
-            tooltip: 'Logout',
           ),
         ],
-        elevation: 0,
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -335,21 +268,20 @@ class _LogViewState extends State<LogView> {
         ),
       ),
 
-      // BODY
       body: Column(
         children: [
-          // Header sapaan user
+          // Header selamat selimit
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             color: Colors.indigo.shade50,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _getGreeting(),
-                  style: TextStyle(fontSize: 13, color: Colors.indigo.shade400),
-                ),
+                Text(_getGreeting(),
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.indigo.shade400)),
                 Text(
                   widget.username,
                   style: const TextStyle(
@@ -362,132 +294,267 @@ class _LogViewState extends State<LogView> {
             ),
           ),
 
-          // LANGKAH 3: ValueListenableBuilder
+          // SEARCH BAR
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => _controller.searchLog(value),
+              decoration: InputDecoration(
+                labelText: 'Cari Catatan...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _controller.searchLog('');
+                          setState(() {});
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade100,
+              ),
+            ),
+          ),
+
+          // ValueListenableBuilder dengan filteredLogs
           Expanded(
             child: ValueListenableBuilder<List<LogModel>>(
-              valueListenable: _controller.logsNotifier,
-              builder: (context, logs, child) {
-                // ---- EMPTY STATE ----
-                if (logs.isEmpty) {
+              valueListenable: _controller.filteredLogs,
+              builder: (context, currentLogs, child) {
+
+                // EMPTY STATE
+                if (currentLogs.isEmpty) {
+                  final isSearching = _searchController.text.isNotEmpty;
                   return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.book_outlined,
-                            size: 80, color: Colors.grey.shade300),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Belum ada catatan',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.w500,
+                    child: Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              color: isSearching
+                                  ? Colors.orange.shade50
+                                  : Colors.indigo.shade50,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              isSearching
+                                  ? Icons.search_off_rounded
+                                  : Icons.menu_book_rounded,
+                              size: 60,
+                              color: isSearching
+                                  ? Colors.orange.shade300
+                                  : Colors.indigo.shade200,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Ketuk tombol + untuk mulai mencatat',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade400,
+                          const SizedBox(height: 24),
+                          Text(
+                            isSearching
+                                ? 'Catatan tidak ditemukan'
+                                : 'Logbook masih kosong',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey.shade700,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          Text(
+                            isSearching
+                                ? 'Coba kata kunci yang berbeda'
+                                : 'Ketuk tombol + untuk membuat\ncatatan pertamamu!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade500,
+                              height: 1.6,
+                            ),
+                          ),
+                          if (!isSearching) ...[
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: _showAddLogDialog,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Buat Catatan Pertama'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                            ),
+                          ]
+                        ],
+                      ),
                     ),
                   );
                 }
 
-                // ---- LANGKAH 3: ListView.builder ----
-                // Hanya merender item yang terlihat di layar (efisien memori).
-                // Berbeda dengan Column yang merender SEMUA item sekaligus.
+                // ListView.builder
                 return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                  itemCount: logs.length,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                  itemCount: currentLogs.length,
                   itemBuilder: (context, index) {
-                    final log = logs[index];
+                    final log = currentLogs[index];
+                    final categoryColor = _getCategoryColor(log.category);
 
-                    // ---- LANGKAH 5: Card dengan aksi Edit & Delete ----
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: Colors.indigo.shade100,
-                          width: 1,
+                    // Geser untuk Hapus (Dismissible)
+                    return Dismissible(
+                      key: Key(log.date),
+                      direction: DismissDirection.endToStart, // Kanan → Kiri
+                      background: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete, color: Colors.white, size: 28),
+                            SizedBox(height: 4),
+                            Text('Hapus',
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 12)),
+                          ],
                         ),
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        // Nomor urut catatan
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.indigo.shade100,
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(
-                              color: Colors.indigo,
-                              fontWeight: FontWeight.bold,
+                      confirmDismiss: (direction) async {
+                        final deletedTitle = log.title;
+                        _controller.removeLog(index);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('"$deletedTitle" dihapus'),
+                            backgroundColor: Colors.red.shade400,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        return true;
+                      },
+
+                      // Kotaknya berwarna sesuai kategori
+                      child: Card(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: categoryColor.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border(
+                              left: BorderSide(
+                                  color: categoryColor, width: 5),
                             ),
                           ),
-                        ),
-                        title: Text(
-                          log.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (log.description.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                log.description,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            leading: CircleAvatar(
+                              backgroundColor:
+                                  categoryColor.withOpacity(0.2),
+                              child: Text(
+                                '${index + 1}',
                                 style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey.shade600),
+                                  color: categoryColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ],
-                            const SizedBox(height: 6),
-                            Row(
+                            ),
+                            title: Text(
+                              log.title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.access_time,
-                                    size: 12, color: Colors.grey.shade400),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatDate(log.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade400,
+                                if (log.description.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    log.description,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade700),
                                   ),
+                                ],
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    // Badge kategori
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: categoryColor,
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        log.category,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.access_time,
+                                        size: 11,
+                                        color: Colors.grey.shade400),
+                                    const SizedBox(width: 3),
+                                    Expanded(
+                                      child: Text(
+                                        log.date,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                        // Tombol Edit & Delete di sisi kanan
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined,
-                                  color: Colors.orange, size: 20),
-                              onPressed: () =>
-                                  _showEditLogDialog(index, log),
-                              tooltip: 'Edit',
+                            // Tombol Edit & Delete
+                            trailing: Wrap(
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit,
+                                      color: categoryColor, size: 20),
+                                  onPressed: () =>
+                                      _showEditLogDialog(index, log),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red, size: 20),
+                                  onPressed: () {
+                                    _controller.removeLog(index);
+                                  },
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red, size: 20),
-                              onPressed: () =>
-                                  _showDeleteConfirmation(index, log.title),
-                              tooltip: 'Hapus',
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     );
@@ -499,13 +566,10 @@ class _LogViewState extends State<LogView> {
         ],
       ),
 
-      // ---- FAB: Tombol tambah catatan ----
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: _showAddLogDialog,
         backgroundColor: Colors.indigo,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label:
-            const Text('Catatan Baru', style: TextStyle(color: Colors.white)),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

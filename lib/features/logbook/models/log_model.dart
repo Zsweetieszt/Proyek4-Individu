@@ -1,32 +1,33 @@
 class LogModel {
   final String title;
   final String description;
-  final DateTime timestamp;
+  final String date;
+  final String category;
 
-  // Constructor
   LogModel({
     required this.title,
     required this.description,
-    required this.timestamp,
+    required this.date,
+    this.category = 'Umum',
   });
 
-  // Mengubah objek LogModel → Map (format JSON-friendly)
+  // toMap(): Objek → Map, untuk disimpan ke SharedPreferences
   Map<String, dynamic> toMap() {
     return {
       'title': title,
       'description': description,
-      // DateTime disimpan sebagai string (format standar)
-      'timestamp': timestamp.toIso8601String(),
+      'date': date,
+      'category': category,
     };
   }
 
-  // Mengubah Map → objek LogModel
+  // fromMap(): Map → Objek, untuk dibaca dari SharedPreferences
   factory LogModel.fromMap(Map<String, dynamic> map) {
     return LogModel(
-      title: map['title'] as String,
-      description: map['description'] as String,
-      // DateTime di-parse kembali dari String
-      timestamp: DateTime.parse(map['timestamp'] as String),
+      title: map['title'],
+      description: map['description'],
+      date: map['date'],
+      category: map['category'] ?? 'Umum',
     );
   }
 }

@@ -29,6 +29,7 @@ class _LoginViewState extends State<LoginView> {
         const SnackBar(
           content: Text("Username dan Password tidak boleh kosong!"),
           backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
         ),
       );
       return;
@@ -65,6 +66,7 @@ class _LoginViewState extends State<LoginView> {
             const SnackBar(
               content: Text("Silakan coba login kembali."),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
             ),
           );
         });

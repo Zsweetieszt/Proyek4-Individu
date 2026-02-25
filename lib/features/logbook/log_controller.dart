@@ -1,76 +1,115 @@
+// File: lib/features/logbook/log_controller.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/log_model.dart';
 
 class LogController {
-  final ValueNotifier<List<LogModel>> logsNotifier =
-      ValueNotifier<List<LogModel>>([]);
+  final ValueNotifier<List<LogModel>> logsNotifier = ValueNotifier([]);
+  ValueNotifier<List<LogModel>> filteredLogs = ValueNotifier([]);
 
-  // Key yang dipakai untuk menyimpan/membaca data di SharedPreferences
-  static const String _storageKey = 'logbook_data';
+  static const String _storageKey = 'user_logs_data';
 
-  Future<void> loadLogs(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    // Key unik per user, misal: 'logbook_data_admin'
-    final String? jsonString = prefs.getString('${_storageKey}_$username');
+  LogController() {
+    loadFromDisk();
+  }
 
-    if (jsonString != null) {
-      final List<dynamic> jsonList = jsonDecode(jsonString);
-      final List<LogModel> loadedLogs =
-          jsonList.map((item) => LogModel.fromMap(item)).toList();
-      logsNotifier.value = loadedLogs;
+  // searchLog: Filter logs berdasarkan query, update filteredLogs
+  void searchLog(String query) {
+    if (query.isEmpty) {
+      // Kosong Maka, tampilkan semua
+      filteredLogs.value = logsNotifier.value;
+    } else {
+      // Ada query Maka, filter yang judulnya mengandung teks
+      filteredLogs.value = logsNotifier.value
+          .where(
+            (log) => log.title.toLowerCase().contains(query.toLowerCase()),
+          )
+          .toList();
     }
   }
 
-  // Ubah List<LogModel> → JSON String → simpan ke SharedPrefs.
-  Future<void> _saveLogs(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    // 1. Map setiap LogModel → Map menggunakan toMap()
-    final List<Map<String, dynamic>> mapList =
-        logsNotifier.value.map((log) => log.toMap()).toList();
-    // 2. Encode List<Map> → JSON String
-    final String jsonString = jsonEncode(mapList);
-    // 3. Simpan ke SharedPreferences
-    await prefs.setString('${_storageKey}_$username', jsonString);
-  }
-
-  // CREATE: Tambah catatan baru ke logbook. Kita buat list baru dengan item baru di depan.
-  void addLog(String username, String title, String description) {
+  // Create
+  void addLog(String title, String desc, String category) {
     final newLog = LogModel(
       title: title,
-      description: description,
-      timestamp: DateTime.now(),
+      description: desc,
+      // Simpan tanggal sebagai String
+      date: _formatDate(DateTime.now()),
+      category: category,
     );
-    // Buat list baru dengan semua item lama + item baru di depan
-    logsNotifier.value = [newLog, ...logsNotifier.value];
-    _saveLogs(username); // Auto-save setiap ada perubahan
+    logsNotifier.value = [...logsNotifier.value, newLog];
+    // Sync ke filteredLogs agar UI ikut update
+    filteredLogs.value = logsNotifier.value;
+    saveToDisk();
   }
 
-  // UPDATE: Update catatan berdasarkan index. Kita buat list baru dengan item yang diupdate.
-  void updateLog(String username, int index, String title, String description) {
-    final updatedLog = LogModel(
+  String _formatDate(DateTime dt) {
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$minute';
+  }
+
+
+  // UPDATE
+  void updateLog(int index, String title, String desc, String category) {
+    // index dari filteredLogs Maka, cari index asli di logsNotifier
+    final logToUpdate = filteredLogs.value[index];
+    final originalIndex = logsNotifier.value.indexOf(logToUpdate);
+
+    final currentLogs = List<LogModel>.from(logsNotifier.value);
+    currentLogs[originalIndex] = LogModel(
       title: title,
-      description: description,
-      timestamp: logsNotifier.value[index].timestamp,
+      description: desc,
+      date: logToUpdate.date, // Agar tanggal tidak berubah
+      category: category,
     );
-    // Buat salinan list, ganti item di index tertentu
-    final updatedList = List<LogModel>.from(logsNotifier.value);
-    updatedList[index] = updatedLog;
-    logsNotifier.value = updatedList;
-    _saveLogs(username); // Auto-save
+    logsNotifier.value = currentLogs;
+    filteredLogs.value = logsNotifier.value;
+    saveToDisk();
   }
 
-  // DELETE: Hapus catatan berdasarkan index. Kita buat list baru tanpa item yang dihapus.
-  void removeLog(String username, int index) {
-    final updatedList = List<LogModel>.from(logsNotifier.value);
-    updatedList.removeAt(index);
-    logsNotifier.value = updatedList;
-    _saveLogs(username); // Auto-save
+  // DELETE
+  void removeLog(int index) {
+    // index dari filteredLogs Maka, cari index asli di logsNotifier
+    final logToRemove = filteredLogs.value[index];
+    final originalIndex = logsNotifier.value.indexOf(logToRemove);
+
+    final currentLogs = List<LogModel>.from(logsNotifier.value);
+    currentLogs.removeAt(originalIndex);
+    logsNotifier.value = currentLogs;
+    filteredLogs.value = logsNotifier.value;
+    saveToDisk();
   }
 
-  // Dispose ValueNotifier saat controller tidak dipakai lagi
+  // SAVE
+  Future<void> saveToDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String encodedData =
+        jsonEncode(logsNotifier.value.map((e) => e.toMap()).toList());
+    await prefs.setString(_storageKey, encodedData);
+  }
+
+  // LOAD
+  Future<void> loadFromDisk() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? data = prefs.getString(_storageKey);
+    if (data != null) {
+      final List decoded = jsonDecode(data);
+      logsNotifier.value =
+          decoded.map((e) => LogModel.fromMap(e)).toList();
+    }
+    // Setelah load, sync filteredLogs dengan semua data
+    filteredLogs.value = logsNotifier.value;
+  }
+
+  // Dispose method untuk membersihkan ValueNotifier
   void dispose() {
     logsNotifier.dispose();
+    filteredLogs.dispose();
   }
 }
