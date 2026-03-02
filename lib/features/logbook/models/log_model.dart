@@ -6,6 +6,7 @@ class LogModel {
   final String description;
   final String category;
   final String date;
+  final String username;
 
   LogModel({
     this.id,
@@ -13,6 +14,7 @@ class LogModel {
     required this.description,
     required this.category,
     required this.date,
+    required this.username,
   });
 
   Map<String, dynamic> toMap() {
@@ -22,6 +24,7 @@ class LogModel {
       'description': description,
       'category': category,
       'date': date,
+      'username': username,
     };
   }
 
@@ -32,6 +35,7 @@ class LogModel {
       description: map['description'] ?? '',
       category: map['category'] ?? 'Umum',
       date: map['date'] ?? '',
+      username: map['username'] ?? '',
     );
   }
 }

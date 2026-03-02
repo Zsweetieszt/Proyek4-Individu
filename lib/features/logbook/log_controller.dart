@@ -37,6 +37,7 @@ class LogController {
       // Simpan tanggal sebagai String
       date: _formatDate(DateTime.now()),
       category: category,
+      username: '',
     );
     logsNotifier.value = [...logsNotifier.value, newLog];
     // Sync ke filteredLogs agar UI ikut update
@@ -67,6 +68,7 @@ class LogController {
       description: desc,
       date: logToUpdate.date, // Agar tanggal tidak berubah
       category: category,
+      username: logToUpdate.username,
     );
     logsNotifier.value = currentLogs;
     filteredLogs.value = logsNotifier.value;

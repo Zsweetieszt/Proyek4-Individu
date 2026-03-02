@@ -63,25 +63,26 @@ class MongoService {
     }
   }
 
-  /// READ: Mengambil data dari Cloud
-  Future<List<LogModel>> getLogs() async {
+  /// READ: Mengambil data milik user tertentu saja
+  Future<List<LogModel>> getLogs({String? username}) async {
     try {
-      final collection = await _getSafeCollection(); // Gunakan jalur aman
+      final collection = await _getSafeCollection();
 
       await LogHelper.writeLog(
-        "INFO: Fetching data from Cloud...",
+        "INFO: Fetching data for user: ${username ?? 'ALL'}",
         source: _source,
         level: 3,
       );
 
-      final List<Map<String, dynamic>> data = await collection.find().toList();
+      // Jika ada username, filter. Jika tidak, ambil semua.
+      final query = username != null ? where.eq('username', username) : null;
+      final List<Map<String, dynamic>> data = query != null
+          ? await collection.find(query).toList()
+          : await collection.find().toList();
+
       return data.map((json) => LogModel.fromMap(json)).toList();
     } catch (e) {
-      await LogHelper.writeLog(
-        "ERROR: Fetch Failed - $e",
-        source: _source,
-        level: 1,
-      );
+      await LogHelper.writeLog("ERROR: Fetch Failed - $e", source: _source, level: 1);
       return [];
     }
   }
