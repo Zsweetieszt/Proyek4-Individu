@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'features/onboarding/onboarding_view.dart';
-void main() {
+void main() async {
+  // Wajib untuk operasi asinkron sebelum runApp
+  WidgetsFlutterBinding.ensureInitialized();
+  // Load ENV
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
