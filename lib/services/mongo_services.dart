@@ -111,9 +111,9 @@ class MongoService {
   Future<void> updateLog(LogModel log) async {
     try {
       final collection = await _getSafeCollection();
-      if (log.id == null)
+      if (log.id == null) {
         throw Exception("ID Log tidak ditemukan untuk update");
-
+      }
       await collection.replaceOne(where.id(log.id!), log.toMap());
 
       await LogHelper.writeLog(

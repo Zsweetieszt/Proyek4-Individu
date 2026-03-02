@@ -1,36 +1,37 @@
 import 'package:mongo_dart/mongo_dart.dart';
 
-class Logbook {
-  final ObjectId? id; // Penanda unik global dari MongoDB
+class LogModel {
+  final ObjectId? id;
   final String title;
   final String description;
-  final DateTime date;
+  final String category;
+  final String date;
 
-  Logbook({
+  LogModel({
     this.id,
     required this.title,
     required this.description,
+    required this.category,
     required this.date,
   });
 
-  // [CONVERT] Memasukkan data ke "Kardus" (BSON/Map) untuk dikirim ke Cloud
   Map<String, dynamic> toMap() {
     return {
-      '_id': id ?? ObjectId(), // Buat ID otomatis jika belum ada
+      '_id': id ?? ObjectId(),
       'title': title,
       'description': description,
-      'date': date.toIso8601String(), // Simpan tanggal dalam format standar
+      'category': category,
+      'date': date,
     };
   }
 
-  // [REVERT] Membongkar "Kardus" (BSON/Map) kembali menjadi objek Flutter
-  factory Logbook.fromMap(Map<String, dynamic> map) {
-    return Logbook(
+  factory LogModel.fromMap(Map<String, dynamic> map) {
+    return LogModel(
       id: map['_id'] as ObjectId?,
       title: map['title'] ?? '',
       description: map['description'] ?? '',
-      date: map['date'] != null ? DateTime.parse(map['date']) : DateTime.now(),
+      category: map['category'] ?? 'Umum',
+      date: map['date'] ?? '',
     );
   }
 }
-
