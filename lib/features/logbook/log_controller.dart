@@ -1,117 +1,159 @@
-// File: lib/features/logbook/log_controller.dart
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../services/mongo_services.dart';
+import '../../services/access_control_service.dart';
 import 'models/log_model.dart';
 
 class LogController {
+  static const String _boxName = 'logs_box';
+  final MongoService _mongo = MongoService();
+
+  final String username;
+  final String teamId;
+
+  // ValueNotifier untuk reactive UI, semua log yang boleh dilihat user ini
   final ValueNotifier<List<LogModel>> logsNotifier = ValueNotifier([]);
-  ValueNotifier<List<LogModel>> filteredLogs = ValueNotifier([]);
 
-  static const String _storageKey = 'user_logs_data';
+  // ValueNotifier khusus search
+  final ValueNotifier<String> searchQuery = ValueNotifier('');
 
-  LogController() {
-    loadFromDisk();
+  LogController({required this.username, required this.teamId}) {
+    _loadFromHive();
+    // Setiap query berubah, otomatis filter ulang
+    searchQuery.addListener(_loadFromHive);
   }
 
-  // searchLog: Filter logs berdasarkan query, update filteredLogs
-  void searchLog(String query) {
-    if (query.isEmpty) {
-      // Kosong Maka, tampilkan semua
-      filteredLogs.value = logsNotifier.value;
-    } else {
-      // Ada query Maka, filter yang judulnya mengandung teks
-      filteredLogs.value = logsNotifier.value
-          .where(
-            (log) => log.title.toLowerCase().contains(query.toLowerCase()),
-          )
-          .toList();
+  Box<LogModel> get _box => Hive.box<LogModel>(_boxName);
+
+  // LOAD & FILTER
+
+  //  - Catatan milik user sendiri: selalu muncul
+  //  - Catatan publik dari tim yang sama: muncul
+  //  - Catatan private milik orang lain: TIDAK muncul
+  void _loadFromHive() {
+    final query = searchQuery.value.toLowerCase();
+    final allLogs = _box.values.toList();
+
+    final visible = allLogs.where((log) {
+      // visibility check
+      final canSee = AccessPolicy.canView(
+        currentUsername: username,
+        teamId: teamId,
+        log: log,
+      );
+      if (!canSee) return false;
+
+      // Filter search query
+      if (query.isEmpty) return true;
+      return log.title.toLowerCase().contains(query) ||
+          log.description.toLowerCase().contains(query);
+    }).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    logsNotifier.value = visible;
+  }
+
+  // SYNC FROM CLOUD
+
+  Future<void> syncFromCloud() async {
+    try {
+      final cloudLogs = await _mongo.getLogs(username: username, teamId: teamId);
+      for (final log in cloudLogs) {
+        final key = log.id?.toHexString() ?? '${log.username}_${log.date}';
+        // Cek duplikat sebelum simpan ke Hive
+        if (!_box.containsKey(key)) {
+          await _box.put(key, log.copyWith(isSynced: true));
+        }
+      }
+      _loadFromHive();
+    } catch (e) {
+      debugPrint("Sync from cloud failed: $e");
     }
   }
 
-  // Create
-  void addLog(String title, String desc, String category) {
-    final newLog = LogModel(
-      title: title,
-      description: desc,
-      // Simpan tanggal sebagai String
-      date: _formatDate(DateTime.now()),
-      category: category,
-      username: '',
-    );
-    logsNotifier.value = [...logsNotifier.value, newLog];
-    // Sync ke filteredLogs agar UI ikut update
-    filteredLogs.value = logsNotifier.value;
-    saveToDisk();
-  }
+  // CREATE
 
-  String _formatDate(DateTime dt) {
-    final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
-    ];
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$minute';
-  }
+  Future<void> addLog(LogModel log) async {
+    final key = '${log.username}_${log.date}';
+    // 1. Simpan ke Hive dulu (offline-first)
+    await _box.put(key, log.copyWith(isSynced: false));
+    _loadFromHive();
 
+    // 2. Upload ke MongoDB di background
+    try {
+      await _mongo.insertLog(log);
+      await _box.put(key, log.copyWith(isSynced: true));
+      _loadFromHive();
+    } catch (e) {
+      debugPrint("Cloud insert failed, kept in Hive: $e");
+    }
+  }
 
   // UPDATE
-  void updateLog(int index, String title, String desc, String category) {
-    // index dari filteredLogs Maka, cari index asli di logsNotifier
-    final logToUpdate = filteredLogs.value[index];
-    final originalIndex = logsNotifier.value.indexOf(logToUpdate);
 
-    final currentLogs = List<LogModel>.from(logsNotifier.value);
-    currentLogs[originalIndex] = LogModel(
-      title: title,
-      description: desc,
-      date: logToUpdate.date, // Agar tanggal tidak berubah
-      category: category,
-      username: logToUpdate.username,
-    );
-    logsNotifier.value = currentLogs;
-    filteredLogs.value = logsNotifier.value;
-    saveToDisk();
+  Future<void> updateLog(LogModel updatedLog) async {
+    final key = updatedLog.id?.toHexString() ?? '${updatedLog.username}_${updatedLog.date}';
+    await _box.put(key, updatedLog.copyWith(isSynced: false));
+    _loadFromHive();
+
+    try {
+      await _mongo.updateLog(updatedLog);
+      await _box.put(key, updatedLog.copyWith(isSynced: true));
+      _loadFromHive();
+    } catch (e) {
+      debugPrint("Cloud update failed: $e");
+    }
   }
 
   // DELETE
-  void removeLog(int index) {
-    // index dari filteredLogs Maka, cari index asli di logsNotifier
-    final logToRemove = filteredLogs.value[index];
-    final originalIndex = logsNotifier.value.indexOf(logToRemove);
 
-    final currentLogs = List<LogModel>.from(logsNotifier.value);
-    currentLogs.removeAt(originalIndex);
-    logsNotifier.value = currentLogs;
-    filteredLogs.value = logsNotifier.value;
-    saveToDisk();
-  }
+  Future<void> removeLog(LogModel log) async {
+    final key = log.id?.toHexString() ?? '${log.username}_${log.date}';
+    await _box.delete(key);
+    _loadFromHive();
 
-  // SAVE
-  Future<void> saveToDisk() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String encodedData =
-        jsonEncode(logsNotifier.value.map((e) => e.toMap()).toList());
-    await prefs.setString(_storageKey, encodedData);
-  }
-
-  // LOAD
-  Future<void> loadFromDisk() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString(_storageKey);
-    if (data != null) {
-      final List decoded = jsonDecode(data);
-      logsNotifier.value =
-          decoded.map((e) => LogModel.fromMap(e)).toList();
+    if (log.id != null) {
+      try {
+        await _mongo.deleteLog(log.id!);
+      } catch (e) {
+        debugPrint("Cloud delete failed: $e");
+      }
     }
-    // Setelah load, sync filteredLogs dengan semua data
-    filteredLogs.value = logsNotifier.value;
   }
 
-  // Dispose method untuk membersihkan ValueNotifier
+  // BACKGROUND SYNC (pending logs saat offline)
+
+  Future<void> syncPendingLogs() async {
+    final pending = _box.values.where((log) => !log.isSynced).toList();
+    for (final log in pending) {
+      try {
+        if (log.id != null) {
+          await _mongo.updateLog(log);
+        } else {
+          await _mongo.insertLog(log);
+        }
+        final key = log.id?.toHexString() ?? '${log.username}_${log.date}';
+        await _box.put(key, log.copyWith(isSynced: true));
+      } catch (e) {
+        debugPrint("Pending sync failed for '${log.title}': $e");
+      }
+    }
+    _loadFromHive();
+  }
+
+  //FORMAT DATE
+
+  static String formatDate(DateTime dt) {
+    final months = ['Jan','Feb','Mar','Apr','Mei','Jun',
+                    'Jul','Ags','Sep','Okt','Nov','Des'];
+    return '${dt.day} ${months[dt.month-1]} ${dt.year}, '
+        '${dt.hour.toString().padLeft(2,'0')}:'
+        '${dt.minute.toString().padLeft(2,'0')}';
+  }
+
   void dispose() {
+    searchQuery.removeListener(_loadFromHive);
+    searchQuery.dispose();
     logsNotifier.dispose();
-    filteredLogs.dispose();
   }
 }

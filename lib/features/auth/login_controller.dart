@@ -1,33 +1,59 @@
-class LoginController {
-  final Map<String, String> _users = {
-    'admin': '123',
-    'mahasiswa': '123',
-    'budi': '123',
-  };
+// File: lib/features/auth/login_controller.dart
+// Update: Tambah role dan teamId untuk RBAC Modul 5
 
-  // Variabel hitung percobaan gagal
+import '../../services/access_control_service.dart';
+
+class UserData {
+  final String username;
+  final String password;
+  final String role;
+  final String teamId;
+
+  const UserData({
+    required this.username,
+    required this.password,
+    required this.role,
+    required this.teamId,
+  });
+}
+
+class LoginController {
+  // Data user dengan role dan teamId
+  // 'Ketua' punya akses penuh, 'Anggota' terbatas
+  final List<UserData> _users = const [
+    UserData(username: 'admin',     password: '123', role: UserRole.ketua,    teamId: 'team_041'),
+    UserData(username: 'mahasiswa', password: '123', role: UserRole.anggota,  teamId: 'team_041'),
+    UserData(username: 'budi',      password: '123', role: UserRole.anggota,  teamId: 'team_041'),
+  ];
+
+  // Hitung percobaan gagal
   int failedAttempts = 0;
 
+  // Simpan data user yang berhasil login
+  UserData? _loggedInUser;
+
+  UserData? get loggedInUser => _loggedInUser;
+  String get currentRole => _loggedInUser?.role ?? UserRole.anggota;
+  String get currentTeamId => _loggedInUser?.teamId ?? '';
+
   bool login(String username, String password) {
-    // validasi
-    if (_users.containsKey(username) && _users[username] == password) {
-      // Jika berhasil, reset percobaan gagal
+    final user = _users.where(
+      (u) => u.username == username && u.password == password,
+    ).firstOrNull;
+
+    if (user != null) {
       failedAttempts = 0;
+      _loggedInUser = user;
       return true;
     } else {
-      // Jika gagal, tambah hitungan kesalahan
       failedAttempts++;
       return false;
     }
   }
 
-  // Validasi banned akun (lebih dari 3x salah)
-  bool isLocked() {
-    return failedAttempts >= 3;
-  }
+  bool isLocked() => failedAttempts >= 3;
 
-  // Fungsi untuk mereset kunci (dipanggil setelah timer 10 detik habis)
-  void resetLock() {
-    failedAttempts = 0;
-  }
+  void resetLock() => failedAttempts = 0;
+
+  void logout() => _loggedInUser = null;
 }

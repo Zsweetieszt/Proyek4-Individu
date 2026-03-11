@@ -13,7 +13,6 @@ class MongoService {
   factory MongoService() => _instance;
   MongoService._internal();
 
-  /// Cek koneksi internet sebelum konek ke Atlas
   Future<bool> _hasInternetConnection() async {
     try {
       final result = await InternetAddress.lookup('google.com')
@@ -26,11 +25,6 @@ class MongoService {
 
   Future<DbCollection> _getSafeCollection() async {
     if (_db == null || !_db!.isConnected || _collection == null) {
-      await LogHelper.writeLog(
-        "INFO: Koleksi belum siap, mencoba rekoneksi...",
-        source: _source,
-        level: 3,
-      );
       await connect();
     }
     return _collection!;
@@ -38,7 +32,6 @@ class MongoService {
 
   Future<void> connect() async {
     try {
-      // Cek internet dulu
       final isOnline = await _hasInternetConnection();
       if (!isOnline) {
         throw Exception(
@@ -52,11 +45,9 @@ class MongoService {
       _db = await Db.create(dbUri);
       await _db!.open().timeout(
         const Duration(seconds: 15),
-        onTimeout: () {
-          throw Exception(
-            "Koneksi Timeout. Cek IP Whitelist (0.0.0.0/0) atau Sinyal HP.",
-          );
-        },
+        onTimeout: () => throw Exception(
+          "Koneksi Timeout. Cek IP Whitelist atau Sinyal HP.",
+        ),
       );
 
       _collection = _db!.collection('logs');
@@ -76,22 +67,33 @@ class MongoService {
     }
   }
 
-  Future<List<LogModel>> getLogs({String? username}) async {
+  /// Jika teamId diisi, hanya ambil data tim tersebut
+  Future<List<LogModel>> getLogs({String? username, String? teamId}) async {
     try {
       final collection = await _getSafeCollection();
-      await LogHelper.writeLog(
-        "INFO: Fetching data for user: ${username ?? 'ALL'}",
-        source: _source,
-        level: 3,
-      );
-      final query = username != null ? where.eq('username', username) : null;
-      final List<Map<String, dynamic>> data = query != null
-          ? await collection.find(query).toList()
-          : await collection.find().toList();
+
+      SelectorBuilder query;
+
+      if (teamId != null && teamId.isNotEmpty) {
+        // Mode kolaboratif: ambil semua log tim + log pribadi user
+        query = where.eq('teamId', teamId);
+      } else if (username != null) {
+        // Mode individual: hanya log user ini
+        query = where.eq('username', username);
+      } else {
+        // Ambil semua (untuk admin)
+        final List<Map<String, dynamic>> data =
+            await collection.find().toList();
+        return data.map((json) => LogModel.fromMap(json)).toList();
+      }
+
+      final List<Map<String, dynamic>> data =
+          await collection.find(query).toList();
       return data.map((json) => LogModel.fromMap(json)).toList();
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Fetch Failed - $e", source: _source, level: 1);
-      rethrow; // rethrow agar FutureBuilder bisa tangkap error
+      await LogHelper.writeLog(
+          "ERROR: Fetch Failed - $e", source: _source, level: 1);
+      rethrow;
     }
   }
 
@@ -105,7 +107,8 @@ class MongoService {
         level: 2,
       );
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Insert Failed - $e", source: _source, level: 1);
+      await LogHelper.writeLog(
+          "ERROR: Insert Failed - $e", source: _source, level: 1);
       rethrow;
     }
   }
@@ -121,7 +124,8 @@ class MongoService {
         level: 2,
       );
     } catch (e) {
-      await LogHelper.writeLog("DATABASE: Update Gagal - $e", source: _source, level: 1);
+      await LogHelper.writeLog(
+          "DATABASE: Update Gagal - $e", source: _source, level: 1);
       rethrow;
     }
   }
@@ -136,7 +140,8 @@ class MongoService {
         level: 2,
       );
     } catch (e) {
-      await LogHelper.writeLog("DATABASE: Hapus Gagal - $e", source: _source, level: 1);
+      await LogHelper.writeLog(
+          "DATABASE: Hapus Gagal - $e", source: _source, level: 1);
       rethrow;
     }
   }
@@ -144,11 +149,6 @@ class MongoService {
   Future<void> close() async {
     if (_db != null) {
       await _db!.close();
-      await LogHelper.writeLog(
-        "DATABASE: Koneksi ditutup",
-        source: _source,
-        level: 2,
-      );
     }
   }
 }

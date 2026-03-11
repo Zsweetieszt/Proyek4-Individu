@@ -1,9 +1,8 @@
 // File: lib/features/auth/login_view.dart
-// PERUBAHAN: Import LogView menggantikan CounterView
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'login_controller.dart';
-import '../logbook/log_view.dart'; // <-- GANTI IMPORT INI
+import '../logbook/log_view.dart';
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -38,17 +37,20 @@ class _LoginViewState extends State<LoginView> {
     bool isSuccess = _controller.login(user, pass);
 
     if (isSuccess) {
-      // PERUBAHAN: Arahkan ke LogView, bukan CounterView
+      // Kirim username, role, dan teamId ke LogView
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => LogView(username: user), // <-- GANTI INI
+          builder: (context) => LogView(
+            username: user,
+            role: _controller.currentRole,       // BARU: kirim role
+            teamId: _controller.currentTeamId,   // BARU: kirim teamId
+          ),
         ),
       );
     } else {
       if (_controller.isLocked()) {
         setState(() => _isLocked = true);
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Terlalu banyak percobaan! Tunggu 10 detik."),
@@ -56,7 +58,6 @@ class _LoginViewState extends State<LoginView> {
             duration: Duration(seconds: 2),
           ),
         );
-
         Timer(const Duration(seconds: 10), () {
           setState(() {
             _isLocked = false;
@@ -113,9 +114,7 @@ class _LoginViewState extends State<LoginView> {
                   icon: Icon(
                     _isObscure ? Icons.visibility_off : Icons.visibility,
                   ),
-                  onPressed: () {
-                    setState(() => _isObscure = !_isObscure);
-                  },
+                  onPressed: () => setState(() => _isObscure = !_isObscure),
                 ),
               ),
             ),
