@@ -60,8 +60,12 @@ class LogController {
       final cloudLogs = await _mongo.getLogs(username: username, teamId: teamId);
       for (final log in cloudLogs) {
         final key = log.id?.toHexString() ?? '${log.username}_${log.date}';
-        // Cek duplikat sebelum simpan ke Hive
-        if (!_box.containsKey(key)) {
+        // Cek duplikat berdasarkan username+date agar tidak terjadi duplikat saat sync
+        // meskipun key Hive lokal (username_date) berbeda dengan key cloud (ObjectId hex)
+        final isDuplicate = _box.values.any(
+          (local) => local.username == log.username && local.date == log.date,
+        );
+        if (!isDuplicate) {
           await _box.put(key, log.copyWith(isSynced: true));
         }
       }

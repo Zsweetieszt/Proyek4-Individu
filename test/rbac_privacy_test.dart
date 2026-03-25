@@ -134,6 +134,18 @@ void main() {
           reason: 'Task 5 Sovereignty: Ketua tidak punya hak edit catatan anggota');
     });
 
+    test('Ketua TIDAK boleh mengedit catatan PUBLIC milik anggota lain', () {
+      final result = AccessPolicy.canPerform(
+        currentUsername: 'ketua',
+        currentRole: UserRole.ketua,
+        action: LogAction.update,
+        log: publicLogByUserA,
+      );
+      expect(result, isFalse,
+          reason: 'Task 5 Sovereignty: catatan public pun bukan milik Ketua, tidak boleh diedit');
+    });
+
+
     test('Ketua TIDAK boleh menghapus catatan milik anggota lain', () {
       final result = AccessPolicy.canPerform(
         currentUsername: 'ketua',
