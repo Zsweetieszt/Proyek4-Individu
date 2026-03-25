@@ -4,13 +4,14 @@ import 'package:lottie/lottie.dart';
 import 'package:intl/intl.dart';
 import 'log_controller.dart';
 import 'log_editor_page.dart';
+import 'counter_view.dart';
 import 'models/log_model.dart';
 import '../../services/access_control_service.dart';
 import '../onboarding/onboarding_view.dart';
 
 class LogView extends StatefulWidget {
   final String username;
-  final String role;    //Ketua atau Anggota
+  final String role;
   final String teamId;
 
   const LogView({
@@ -42,7 +43,6 @@ class _LogViewState extends State<LogView> {
     _listenConnectivity();
     _syncFromCloud();
 
-    // Hubungkan TextField ke ValueNotifier di controller
     _searchTextController.addListener(() {
       _controller.searchQuery.value = _searchTextController.text;
     });
@@ -54,7 +54,6 @@ class _LogViewState extends State<LogView> {
     _controller.dispose();
     super.dispose();
   }
-  
 
   Future<void> _checkConnectivity() async {
     final result = await Connectivity().checkConnectivity();
@@ -80,7 +79,6 @@ class _LogViewState extends State<LogView> {
     await _controller.syncPendingLogs();
     if (mounted) setState(() => _isSyncing = false);
   }
-
 
   String _getGreeting() {
     final h = DateTime.now().hour;
@@ -303,6 +301,18 @@ class _LogViewState extends State<LogView> {
                     onPressed: _isOnline ? _syncFromCloud : null,
                   ),
           ),
+          // ── PERBAIKAN FIX 2: Tombol navigasi ke CounterView ──
+          IconButton(
+            icon: const Icon(Icons.calculate_outlined, color: Colors.white),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CounterView(username: widget.username),
+              ),
+            ),
+            tooltip: 'Counter',
+          ),
+          // ─────────────────────────────────────────────────────
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _handleLogout,
@@ -377,7 +387,6 @@ class _LogViewState extends State<LogView> {
             ),
           ),
 
-          // Banner offline
           if (!_isOnline)
             Container(
               width: double.infinity,
@@ -445,7 +454,6 @@ class _LogViewState extends State<LogView> {
                       final log = logs[index];
                       final catColor = _getCategoryColor(log.category);
 
-                      // RBAC: cek izin edit & delete
                       final canEdit = AccessPolicy.canPerform(
                         currentUsername: widget.username,
                         currentRole: widget.role,
@@ -570,7 +578,6 @@ class _LogViewState extends State<LogView> {
                             ),
                             trailing: Wrap(
                               children: [
-                                // Tombol Edit, kondisional RBAC
                                 if (canEdit)
                                   IconButton(
                                     icon: Icon(Icons.edit,
@@ -578,7 +585,6 @@ class _LogViewState extends State<LogView> {
                                     onPressed: () => _openEditor(existing: log),
                                     tooltip: 'Edit',
                                   ),
-                                // Tombol Delete, kondisional RBAC
                                 if (canDelete)
                                   IconButton(
                                     icon: const Icon(Icons.delete,

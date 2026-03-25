@@ -31,13 +31,23 @@ class AccessPolicy {
         if (log == null) return true;
         return isOwner(currentUsername: currentUsername, log: log) || log.isPublic;
 
-      // Update: HANYA pemilik yang boleh edit dan hapus
+      // Update:
+      // - Pemilik selalu boleh edit catatannya sendiri
+      // - Ketua juga boleh edit catatan PUBLIK milik siapapun dalam tim
       case LogAction.update:
         if (log == null) return false;
-        return isOwner(currentUsername: currentUsername, log: log);
+        if (isOwner(currentUsername: currentUsername, log: log)) return true;
+        if (currentRole == UserRole.ketua && log.isPublic) return true;
+        return false;
+
+      // Delete:
+      // - Pemilik selalu boleh hapus catatannya sendiri
+      // - Ketua juga boleh hapus catatan PUBLIK milik siapapun dalam tim
       case LogAction.delete:
         if (log == null) return false;
-        return isOwner(currentUsername: currentUsername, log: log);
+        if (isOwner(currentUsername: currentUsername, log: log)) return true;
+        if (currentRole == UserRole.ketua && log.isPublic) return true;
+        return false;
 
       default:
         return false;

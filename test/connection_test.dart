@@ -7,11 +7,7 @@ void main() {
   const String sourceFile = "connection_test.dart";
 
   setUpAll(() async {
-    await dotenv.load(mergeWith: {
-      'MONGODB_URI': 'mongodb+srv://admin_logbook:admin123@dinanda041.zf9bfas.mongodb.net/logbook_db?retryWrites=true&w=majority&appName=Dinanda041',
-      'LOG_LEVEL': '3',
-      'LOG_MUTE': '',
-    });
+    await dotenv.load(fileName: ".env");
   });
 
   test(
