@@ -67,7 +67,6 @@ class MongoService {
     }
   }
 
-  /// Jika teamId diisi, hanya ambil data tim tersebut
   Future<List<LogModel>> getLogs({String? username, String? teamId}) async {
     try {
       final collection = await _getSafeCollection();
@@ -75,13 +74,10 @@ class MongoService {
       SelectorBuilder query;
 
       if (teamId != null && teamId.isNotEmpty) {
-        // Mode kolaboratif: ambil semua log tim + log pribadi user
         query = where.eq('teamId', teamId);
       } else if (username != null) {
-        // Mode individual: hanya log user ini
         query = where.eq('username', username);
       } else {
-        // Ambil semua (untuk admin)
         final List<Map<String, dynamic>> data =
             await collection.find().toList();
         return data.map((json) => LogModel.fromMap(json)).toList();
@@ -142,6 +138,19 @@ class MongoService {
     } catch (e) {
       await LogHelper.writeLog(
           "DATABASE: Hapus Gagal - $e", source: _source, level: 1);
+      rethrow;
+    }
+  }
+
+  /// Hapus log berdasarkan hex string dari ObjectId.
+  /// Digunakan saat flush pending-delete queue.
+  Future<void> deleteLogByHex(String hexId) async {
+    try {
+      final objectId = ObjectId.fromHexString(hexId);
+      await deleteLog(objectId);
+    } catch (e) {
+      await LogHelper.writeLog(
+          "DATABASE: Hapus by Hex Gagal - $e", source: _source, level: 1);
       rethrow;
     }
   }

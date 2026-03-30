@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:lottie/lottie.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // Import package markdown
+
 import 'log_controller.dart';
 import 'log_editor_page.dart';
 import 'counter_view.dart';
@@ -29,8 +33,12 @@ class _LogViewState extends State<LogView> {
   late LogController _controller;
   final TextEditingController _searchTextController = TextEditingController();
 
-  bool _isOnline   = true;
-  bool _isSyncing  = false;
+  bool _isOnline = true;
+  bool _isSyncing = false;
+
+  // Subscription & timer untuk deteksi koneksi yang reliable
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  Timer? _connectivityTimer;
 
   @override
   void initState() {
@@ -39,9 +47,9 @@ class _LogViewState extends State<LogView> {
       username: widget.username,
       teamId: widget.teamId,
     );
-    _checkConnectivity();
-    _listenConnectivity();
-    _syncFromCloud();
+
+    // Cek status awal, lalu pasang listener + timer
+    _initConnectivity();
 
     _searchTextController.addListener(() {
       _controller.searchQuery.value = _searchTextController.text;
@@ -50,32 +58,126 @@ class _LogViewState extends State<LogView> {
 
   @override
   void dispose() {
+    _connectivitySubscription?.cancel();
+    _connectivityTimer?.cancel();
     _searchTextController.dispose();
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _checkConnectivity() async {
-    final result = await Connectivity().checkConnectivity();
-    if (mounted) setState(() => _isOnline = result != ConnectivityResult.none);
+  // ─────────────────────────────────────────────
+  // CONNECTIVITY: inisialisasi, listener, dan timer fallback
+  // ─────────────────────────────────────────────
+
+  Future<void> _initConnectivity() async {
+    // 1. Cek status awal secara aktual (bukan hanya sinyal WiFi)
+    final online = await _checkRealInternet();
+    if (mounted) setState(() => _isOnline = online);
+
+    // Jika online dari awal, langsung sync
+    if (online) _syncFromCloud();
+
+    // 2. Listen ke perubahan tipe koneksi (WiFi ↔ Mobile ↔ None)
+    _connectivitySubscription = Connectivity()
+        .onConnectivityChanged
+        .listen(_onConnectivityChanged);
+
+    // 3. Timer fallback setiap 5 detik — untuk kasus di mana
+    //    connectivity_plus tidak fire event (terutama Android)
+    _connectivityTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollInternetStatus(),
+    );
   }
 
-  void _listenConnectivity() {
-    Connectivity().onConnectivityChanged.listen((result) {
-      final wasOffline = !_isOnline;
-      if (mounted) setState(() => _isOnline = result != ConnectivityResult.none);
-      if (wasOffline && _isOnline) _syncPending();
-    });
+  /// Cek koneksi internet sesungguhnya lewat DNS lookup.
+  /// Mengembalikan true jika benar-benar bisa akses internet.
+  Future<bool> _checkRealInternet() async {
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 4));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Dipanggil oleh stream connectivity_plus saat tipe koneksi berubah.
+  /// Tipe koneksi berubah != internet tersedia, jadi tetap verifikasi lewat DNS.
+  Future<void> _onConnectivityChanged(List<ConnectivityResult> results) async {
+    final hasNetworkInterface = results.any((r) => r != ConnectivityResult.none);
+
+    if (!hasNetworkInterface) {
+      // Jaringan jelas putus — langsung tandai offline
+      _applyOnlineStatus(false);
+    } else {
+      // Ada sinyal, tapi verifikasi dulu apakah benar-benar bisa internet
+      final online = await _checkRealInternet();
+      _applyOnlineStatus(online);
+    }
+  }
+
+  /// Polling periodik — sebagai fallback agar deteksi tetap akurat
+  /// di device yang connectivity stream-nya lambat/tidak reliable.
+  Future<void> _pollInternetStatus() async {
+    if (!mounted) return;
+    final online = await _checkRealInternet();
+    if (online != _isOnline) {
+      // Status berubah → terapkan
+      _applyOnlineStatus(online);
+    }
+  }
+
+  /// Terapkan status online/offline ke UI, dan trigger auto-sync jika perlu.
+  void _applyOnlineStatus(bool nowOnline) {
+    if (!mounted) return;
+    final wasOffline = !_isOnline;
+
+    if (_isOnline == nowOnline) return; // tidak ada perubahan, skip
+
+    setState(() => _isOnline = nowOnline);
+
+    if (nowOnline && wasOffline) {
+      // ✅ Baru kembali online → auto-sync tanpa perlu refresh manual
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(children: [
+            Icon(Icons.wifi, color: Colors.white, size: 16),
+            SizedBox(width: 8),
+            Text('Koneksi kembali! Menyinkronkan data...'),
+          ]),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      // Jalankan sync di background — tidak perlu await di sini
+      _syncPending().then((_) => _syncFromCloud());
+    } else if (!nowOnline) {
+      // ❌ Baru offline
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(children: [
+            Icon(Icons.wifi_off, color: Colors.white, size: 16),
+            SizedBox(width: 8),
+            Text('Koneksi terputus. Mode Offline aktif.'),
+          ]),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Future<void> _syncFromCloud() async {
-    setState(() => _isSyncing = true);
+    if (!_isOnline) return;
+    if (mounted) setState(() => _isSyncing = true);
     await _controller.syncFromCloud();
     if (mounted) setState(() => _isSyncing = false);
   }
 
   Future<void> _syncPending() async {
-    setState(() => _isSyncing = true);
+    if (!_isOnline) return;
+    if (mounted) setState(() => _isSyncing = true);
     await _controller.syncPendingLogs();
     if (mounted) setState(() => _isSyncing = false);
   }
@@ -90,15 +192,24 @@ class _LogViewState extends State<LogView> {
 
   Color _getCategoryColor(String cat) {
     switch (cat) {
-      case 'Organisasi': return Colors.blue;
-      case 'Tugas':      return Colors.orange;
-      case 'Kuliah':     return Colors.green;
-      case 'Pribadi':    return Colors.purple;
-      case 'Urgent':     return Colors.red;
-      case 'Mechanical': return Colors.teal;
-      case 'Electronic': return Colors.blueAccent;
-      case 'Software':   return Colors.deepPurple;
-      default:           return Colors.blueGrey;
+      case 'Organisasi':
+        return Colors.blue;
+      case 'Tugas':
+        return Colors.orange;
+      case 'Kuliah':
+        return Colors.green;
+      case 'Pribadi':
+        return Colors.purple;
+      case 'Urgent':
+        return Colors.red;
+      case 'Mechanical':
+        return Colors.teal;
+      case 'Electronic':
+        return Colors.blueAccent;
+      case 'Software':
+        return Colors.deepPurple;
+      default:
+        return Colors.blueGrey;
     }
   }
 
@@ -106,11 +217,11 @@ class _LogViewState extends State<LogView> {
     try {
       final parsed = DateFormat("d MMM yyyy, HH:mm", "id").parse(dateStr);
       final diff = DateTime.now().difference(parsed);
-      if (diff.inSeconds < 60)  return 'Baru saja';
-      if (diff.inMinutes < 60)  return '${diff.inMinutes} menit lalu';
-      if (diff.inHours < 24)    return '${diff.inHours} jam lalu';
-      if (diff.inDays == 1)     return 'Kemarin';
-      if (diff.inDays < 7)      return '${diff.inDays} hari lalu';
+      if (diff.inSeconds < 60) return 'Baru saja';
+      if (diff.inMinutes < 60) return '${diff.inMinutes} menit lalu';
+      if (diff.inHours < 24) return '${diff.inHours} jam lalu';
+      if (diff.inDays == 1) return 'Kemarin';
+      if (diff.inDays < 7) return '${diff.inDays} hari lalu';
       return DateFormat("d MMM yyyy", "id").format(parsed);
     } catch (_) {
       return dateStr;
@@ -118,6 +229,25 @@ class _LogViewState extends State<LogView> {
   }
 
   Future<void> _openEditor({LogModel? existing}) async {
+    // Tampilkan peringatan jika offline (tetap bisa tambah/edit, tersimpan lokal)
+    if (!_isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(children: [
+            Icon(Icons.wifi_off, color: Colors.white, size: 16),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Mode Offline: Catatan tersimpan di perangkat dan akan disinkronkan saat online.',
+              ),
+            ),
+          ]),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+
     final result = await Navigator.push<LogModel>(
       context,
       MaterialPageRoute(
@@ -137,11 +267,23 @@ class _LogViewState extends State<LogView> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(existing != null
-              ? 'Catatan berhasil diperbarui'
-              : 'Catatan berhasil ditambahkan'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
+          content: Row(children: [
+            Icon(
+              _isOnline ? Icons.cloud_done : Icons.save,
+              color: Colors.white,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(existing != null
+                ? (_isOnline
+                    ? 'Catatan berhasil diperbarui & disinkronkan'
+                    : 'Catatan diperbarui (akan sync saat online)')
+                : (_isOnline
+                    ? 'Catatan berhasil ditambahkan & disinkronkan'
+                    : 'Catatan tersimpan lokal (akan sync saat online)')),
+          ]),
+          backgroundColor: _isOnline ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 3),
         ));
       }
     }
@@ -152,9 +294,40 @@ class _LogViewState extends State<LogView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus Catatan?'),
-        content: Text('"${log.title}" akan dihapus permanen.'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('"${log.title}" akan dihapus permanen.'),
+            if (!_isOnline) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(children: [
+                  Icon(Icons.wifi_off,
+                      size: 14, color: Colors.orange.shade700),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Mode Offline: Penghapusan dari cloud akan dilakukan saat online kembali.',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.orange.shade800),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -163,12 +336,18 @@ class _LogViewState extends State<LogView> {
         ],
       ),
     );
+
     if (confirm == true) {
       await _controller.removeLog(log);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('"${log.title}" dihapus'),
-          backgroundColor: Colors.red.shade400,
+          content: Text(
+            _isOnline
+                ? '"${log.title}" dihapus'
+                : '"${log.title}" dihapus dari perangkat (cloud sync pending)',
+          ),
+          backgroundColor:
+              _isOnline ? Colors.red.shade400 : Colors.orange.shade600,
         ));
       }
     }
@@ -181,7 +360,9 @@ class _LogViewState extends State<LogView> {
         title: const Text('Konfirmasi Logout'),
         content: const Text('Apakah Anda yakin ingin keluar?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal')),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -191,7 +372,8 @@ class _LogViewState extends State<LogView> {
                 (route) => false,
               );
             },
-            child: const Text('Ya, Keluar', style: TextStyle(color: Colors.red)),
+            child: const Text('Ya, Keluar',
+                style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -228,7 +410,9 @@ class _LogViewState extends State<LogView> {
             ),
             const SizedBox(height: 16),
             Text(
-              isSearching ? 'Catatan tidak ditemukan' : 'Belum ada aktivitas hari ini?',
+              isSearching
+                  ? 'Catatan tidak ditemukan'
+                  : 'Belum ada aktivitas hari ini?',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -275,7 +459,9 @@ class _LogViewState extends State<LogView> {
         title: Text(
           'Logbook: ${widget.username}',
           style: const TextStyle(
-              fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white),
         ),
         centerTitle: true,
         actions: [
@@ -285,7 +471,8 @@ class _LogViewState extends State<LogView> {
                 ? const Padding(
                     padding: EdgeInsets.all(14),
                     child: SizedBox(
-                      width: 20, height: 20,
+                      width: 20,
+                      height: 20,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2),
                     ),
@@ -293,15 +480,16 @@ class _LogViewState extends State<LogView> {
                 : IconButton(
                     icon: Icon(
                       _isOnline ? Icons.cloud_done : Icons.cloud_off,
-                      color: _isOnline ? Colors.greenAccent : Colors.redAccent,
+                      color: _isOnline
+                          ? Colors.greenAccent
+                          : Colors.redAccent,
                     ),
                     tooltip: _isOnline
                         ? 'Tersinkron ke Cloud, Ketuk untuk refresh'
-                        : 'Offline, Data tersimpan di perangkat',
+                        : 'Offline — Data tersimpan di perangkat',
                     onPressed: _isOnline ? _syncFromCloud : null,
                   ),
           ),
-          // ── PERBAIKAN FIX 2: Tombol navigasi ke CounterView ──
           IconButton(
             icon: const Icon(Icons.calculate_outlined, color: Colors.white),
             onPressed: () => Navigator.push(
@@ -312,7 +500,6 @@ class _LogViewState extends State<LogView> {
             ),
             tooltip: 'Counter',
           ),
-          // ─────────────────────────────────────────────────────
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _handleLogout,
@@ -330,9 +517,11 @@ class _LogViewState extends State<LogView> {
       ),
       body: Column(
         children: [
+          // ── Header: greeting + role badge ──
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             color: Colors.indigo.shade50,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -341,7 +530,9 @@ class _LogViewState extends State<LogView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(_getGreeting(),
-                        style: TextStyle(fontSize: 13, color: Colors.indigo.shade400)),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.indigo.shade400)),
                     Text(widget.username,
                         style: const TextStyle(
                             fontSize: 18,
@@ -350,7 +541,8 @@ class _LogViewState extends State<LogView> {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: widget.role == UserRole.ketua
                         ? Colors.amber.shade100
@@ -364,7 +556,9 @@ class _LogViewState extends State<LogView> {
                   ),
                   child: Row(children: [
                     Icon(
-                      widget.role == UserRole.ketua ? Icons.star : Icons.person,
+                      widget.role == UserRole.ketua
+                          ? Icons.star
+                          : Icons.person,
                       size: 14,
                       color: widget.role == UserRole.ketua
                           ? Colors.amber.shade700
@@ -387,26 +581,40 @@ class _LogViewState extends State<LogView> {
             ),
           ),
 
+          // ── Offline Banner (lebih informatif) ──
           if (!_isOnline)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: Colors.orange.shade100,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade100,
+                border: Border(
+                  bottom: BorderSide(
+                      color: Colors.orange.shade300, width: 1),
+                ),
+              ),
               child: Row(children: [
-                Icon(Icons.wifi_off, size: 16, color: Colors.orange.shade700),
+                Icon(Icons.wifi_off,
+                    size: 16, color: Colors.orange.shade800),
                 const SizedBox(width: 8),
-                Text(
-                  'Mode Offline, Data tersimpan di perangkat',
-                  style: TextStyle(
+                Expanded(
+                  child: Text(
+                    'Mode Offline — Perubahan tersimpan di perangkat & akan disinkronkan otomatis saat koneksi pulih.',
+                    style: TextStyle(
                       fontSize: 12,
-                      color: Colors.orange.shade800,
-                      fontWeight: FontWeight.w500),
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ]),
             ),
 
+          // ── Search Bar ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 10),
             child: ValueListenableBuilder<String>(
               valueListenable: _controller.searchQuery,
               builder: (_, query, __) => TextField(
@@ -433,11 +641,13 @@ class _LogViewState extends State<LogView> {
             ),
           ),
 
+          // ── Log List ──
           Expanded(
             child: ValueListenableBuilder<List<LogModel>>(
               valueListenable: _controller.logsNotifier,
               builder: (context, logs, _) {
-                final isSearching = _controller.searchQuery.value.isNotEmpty;
+                final isSearching =
+                    _controller.searchQuery.value.isNotEmpty;
 
                 if (logs.isEmpty) {
                   return _buildEmptyState(isSearching: isSearching);
@@ -448,7 +658,8 @@ class _LogViewState extends State<LogView> {
                   color: Colors.indigo,
                   child: ListView.builder(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
+                    padding:
+                        const EdgeInsets.fromLTRB(16, 4, 16, 80),
                     itemCount: logs.length,
                     itemBuilder: (context, index) {
                       final log = logs[index];
@@ -471,107 +682,160 @@ class _LogViewState extends State<LogView> {
                         margin: const EdgeInsets.only(bottom: 10),
                         elevation: 2,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            borderRadius:
+                                BorderRadius.circular(12)),
                         child: Container(
                           decoration: BoxDecoration(
                             color: catColor.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius:
+                                BorderRadius.circular(12),
                             border: Border(
-                                left: BorderSide(color: catColor, width: 5)),
+                                left: BorderSide(
+                                    color: catColor, width: 5)),
                           ),
                           child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                            contentPadding:
+                                const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8),
                             leading: CircleAvatar(
-                              backgroundColor: catColor.withValues(alpha: 0.2),
+                              backgroundColor:
+                                  catColor.withValues(alpha: 0.2),
                               child: Text('${index + 1}',
                                   style: TextStyle(
                                       color: catColor,
-                                      fontWeight: FontWeight.bold)),
+                                      fontWeight:
+                                          FontWeight.bold)),
                             ),
                             title: Text(log.title,
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 15)),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15)),
                             subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
                                 if (log.description.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(log.description,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
+                                  const SizedBox(height: 6),
+                                  // Menggunakan MarkdownBody dan menghapus maxLines
+                                  MarkdownBody(
+                                    data: log.description,
+                                    styleSheet: MarkdownStyleSheet(
+                                      p: TextStyle(
                                           fontSize: 13,
-                                          color: Colors.grey.shade700)),
+                                          color: Colors.grey.shade700),
+                                      listBullet: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade700),
+                                      h1: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      h2: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                      h3: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
                                 ],
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 4,
                                   children: [
+                                    // Category chip
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
+                                      padding:
+                                          const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 8,
+                                              vertical: 2),
                                       decoration: BoxDecoration(
                                           color: catColor,
-                                          borderRadius: BorderRadius.circular(20)),
+                                          borderRadius:
+                                              BorderRadius.circular(
+                                                  20)),
                                       child: Text(log.category,
                                           style: const TextStyle(
                                               fontSize: 10,
                                               color: Colors.white,
-                                              fontWeight: FontWeight.bold)),
+                                              fontWeight:
+                                                  FontWeight.bold)),
                                     ),
+                                    // Public/Private chip
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
+                                      padding:
+                                          const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 6,
+                                              vertical: 2),
                                       decoration: BoxDecoration(
                                         color: log.isPublic
                                             ? Colors.green.shade50
                                             : Colors.grey.shade100,
-                                        borderRadius: BorderRadius.circular(20),
+                                        borderRadius:
+                                            BorderRadius.circular(
+                                                20),
                                         border: Border.all(
                                           color: log.isPublic
                                               ? Colors.green.shade300
-                                              : Colors.grey.shade300,
+                                              : Colors
+                                                  .grey.shade300,
                                         ),
                                       ),
-                                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                        Icon(
-                                          log.isPublic ? Icons.public : Icons.lock,
-                                          size: 10,
-                                          color: log.isPublic
-                                              ? Colors.green
-                                              : Colors.grey,
-                                        ),
-                                        const SizedBox(width: 3),
-                                        Text(
-                                          log.isPublic ? 'Publik' : 'Privat',
-                                          style: TextStyle(
-                                              fontSize: 9,
+                                      child: Row(
+                                          mainAxisSize:
+                                              MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              log.isPublic
+                                                  ? Icons.public
+                                                  : Icons.lock,
+                                              size: 10,
                                               color: log.isPublic
                                                   ? Colors.green
-                                                  : Colors.grey),
-                                        ),
-                                      ]),
+                                                  : Colors.grey,
+                                            ),
+                                            const SizedBox(
+                                                width: 3),
+                                            Text(
+                                              log.isPublic
+                                                  ? 'Publik'
+                                                  : 'Privat',
+                                              style: TextStyle(
+                                                  fontSize: 9,
+                                                  color: log.isPublic
+                                                      ? Colors.green
+                                                      : Colors.grey),
+                                            ),
+                                          ]),
                                     ),
-                                    Row(mainAxisSize: MainAxisSize.min, children: [
-                                      Icon(
-                                        log.isSynced
-                                            ? Icons.cloud_done
-                                            : Icons.cloud_upload,
-                                        size: 12,
-                                        color: log.isSynced
-                                            ? Colors.green.shade400
-                                            : Colors.orange.shade400,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _formatRelativeTime(log.date),
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade400),
-                                      ),
-                                    ]),
+                                    // Sync status + time
+                                    Row(
+                                        mainAxisSize:
+                                            MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            log.isSynced
+                                                ? Icons.cloud_done
+                                                : Icons.cloud_upload,
+                                            size: 12,
+                                            color: log.isSynced
+                                                ? Colors
+                                                    .green.shade400
+                                                : Colors
+                                                    .orange.shade400,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            log.isSynced
+                                                ? _formatRelativeTime(
+                                                    log.date)
+                                                : 'Pending sync',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: log.isSynced
+                                                    ? Colors
+                                                        .grey.shade400
+                                                    : Colors.orange
+                                                        .shade600),
+                                          ),
+                                        ]),
                                   ],
                                 ),
                               ],
@@ -581,15 +845,18 @@ class _LogViewState extends State<LogView> {
                                 if (canEdit)
                                   IconButton(
                                     icon: Icon(Icons.edit,
-                                        color: catColor, size: 20),
-                                    onPressed: () => _openEditor(existing: log),
+                                        color: catColor,
+                                        size: 20),
+                                    onPressed: () =>
+                                        _openEditor(existing: log),
                                     tooltip: 'Edit',
                                   ),
                                 if (canDelete)
                                   IconButton(
                                     icon: const Icon(Icons.delete,
                                         color: Colors.red, size: 20),
-                                    onPressed: () => _deleteLog(log),
+                                    onPressed: () =>
+                                        _deleteLog(log),
                                     tooltip: 'Hapus',
                                   ),
                               ],
@@ -609,7 +876,8 @@ class _LogViewState extends State<LogView> {
         onPressed: () => _openEditor(),
         backgroundColor: Colors.indigo,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Tambah', style: TextStyle(color: Colors.white)),
+        label: const Text('Tambah',
+            style: TextStyle(color: Colors.white)),
       ),
     );
   }

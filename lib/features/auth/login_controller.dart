@@ -1,6 +1,3 @@
-// File: lib/features/auth/login_controller.dart
-// Update: Tambah role dan teamId untuk RBAC Modul 5
-
 import '../../services/access_control_service.dart';
 
 class UserData {
@@ -24,6 +21,7 @@ class LoginController {
     UserData(username: 'admin',     password: '123', role: UserRole.ketua,    teamId: 'team_041'),
     UserData(username: 'mahasiswa', password: '123', role: UserRole.anggota,  teamId: 'team_041'),
     UserData(username: 'budi',      password: '123', role: UserRole.anggota,  teamId: 'team_041'),
+    UserData(username: 'udin',      password: '123', role: UserRole.anggota,  teamId: 'team_045'),
   ];
 
   // Hitung percobaan gagal
