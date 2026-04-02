@@ -59,10 +59,14 @@ class CounterController {
   }
 
   void decrement(String username) {
+  if (_counter - _step >= 0) {
     _counter -= _step;
-    _addHistory("Mengurangi $_step", 'subtract', username);
-    _saveData(username); // Auto Save
+  } else {
+    _counter = 0;
   }
+  _addHistory("Mengurangi $_step", 'subtract', username);
+  _saveData(username);
+}
 
   void reset(String username) {
     _counter = 0;
