@@ -32,7 +32,7 @@ void main() {
       final controller = CounterController();
       await controller.loadData(username);
       controller.updateStep('3');
-      controller.increment(username); // counter = 3, auto-save
+      await controller.increment(username); // counter = 3, auto-save
       
       // buat controller baru (simulasi app restart)
       final freshController = CounterController();
@@ -51,8 +51,8 @@ void main() {
       final controller = CounterController();
       await controller.loadData(username);
       controller.updateStep('1');
-      controller.increment(username);
-      controller.increment(username); // 2 entri history
+      await controller.increment(username);
+      await controller.increment(username); // 2 entri history
 
       // (2) exercise: muat ulang di controller baru
       final freshController = CounterController();
@@ -98,8 +98,8 @@ void main() {
       final controller = CounterController();
       await controller.loadData(username);
       controller.updateStep('2');
-      controller.increment(username); // counter = 2
-      controller.reset(username);     // counter = 0, auto-save
+      await controller.increment(username); // counter = 2
+      await controller.reset(username);     // counter = 0, auto-save
 
       // (2) exercise: muat ulang
       final freshController = CounterController();

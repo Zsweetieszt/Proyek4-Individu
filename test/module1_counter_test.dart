@@ -49,7 +49,7 @@ void main() {
       // (1) arrange
       controller.updateStep('2');
       // (2) exercise
-      controller.increment(username);
+      await controller.increment(username);
       actual = controller.value;
       expected = 2;
       // (3) verify
@@ -60,10 +60,10 @@ void main() {
     test('TC05 - decrement should decrease counter based on step (path True)', () async {
       // (1) arrange: naikkan counter ke 4 dulu
       controller.updateStep('2');
-      controller.increment(username);
-      controller.increment(username); // counter = 4
+      await controller.increment(username);
+      await controller.increment(username); // counter = 4
       // (2) exercise
-      controller.decrement(username);
+      await controller.decrement(username);
       actual = controller.value;
       expected = 2; // 4 - 2
       // (3) verify
@@ -75,7 +75,7 @@ void main() {
       // (1) arrange: counter = 0, step = 5
       controller.updateStep('5');
       // (2) exercise
-      controller.decrement(username);
+      await controller.decrement(username);
       actual = controller.value;
       expected = 0;
       // (3) verify
@@ -85,9 +85,9 @@ void main() {
     // TC07: reset harus set counter ke 0
     test('TC07 - reset should set counter to zero', () async {
       // (1) arrange
-      controller.increment(username); // counter = 1
+      await controller.increment(username); // counter = 1
       // (2) exercise
-      controller.reset(username);
+      await controller.reset(username);
       actual = controller.value;
       expected = 0;
       // (3) verify
@@ -99,7 +99,7 @@ void main() {
       // (1) arrange
       controller.updateStep('1');
       // (2) exercise
-      controller.increment(username);
+      await controller.increment(username);
       var actual1 = controller.history.isNotEmpty;
       var expected1 = true;
       var actual2 = controller.history.first['action']?.contains('Menambah') ?? false;
@@ -115,7 +115,7 @@ void main() {
       controller.updateStep('1');
       // (2) exercise: increment 6x (melebihi batas)
       for (int i = 0; i < 6; i++) {
-        controller.increment(username);
+        await controller.increment(username);
       }
       actual = controller.history.length;
       expected = 5;
@@ -127,7 +127,7 @@ void main() {
     test('TC10 - counter should persist after app restart simulation', () async {
       // (1) arrange: increment dengan step 3
       controller.updateStep('3');
-      controller.increment(username); // counter = 3
+      await controller.increment(username); // counter = 3
       // Simpan manual (karena increment sudah auto-save)
       
       // Buat instance baru (simulasi app restart)

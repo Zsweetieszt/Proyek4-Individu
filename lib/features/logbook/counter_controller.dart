@@ -52,27 +52,27 @@ class CounterController {
   }
   
   // Kita butuh username di sini untuk tahu data siapa yang disimpan
-  void increment(String username) {
-    _counter += _step;
-    _addHistory("Menambah $_step", 'add', username);
-    _saveData(username); // Auto Save
-  }
+  Future<void> increment(String username) async {
+  _counter += _step;
+  _addHistory("Menambah $_step", 'add', username);
+  await _saveData(username); // Auto Save
+}
 
-  void decrement(String username) {
+Future<void> decrement(String username) async {
   if (_counter - _step >= 0) {
     _counter -= _step;
   } else {
     _counter = 0;
   }
   _addHistory("Mengurangi $_step", 'subtract', username);
-  _saveData(username);
+  await _saveData(username);
 }
 
-  void reset(String username) {
-    _counter = 0;
-    _addHistory("Reset counter", 'reset', username);
-    _saveData(username); // Auto Save
-  }
+Future<void> reset(String username) async {
+  _counter = 0;
+  _addHistory("Reset counter", 'reset', username);
+  await _saveData(username); // Auto Save
+}
   
   void _addHistory(String action, String type, String username) {
     final time = DateTime.now();

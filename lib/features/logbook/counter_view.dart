@@ -103,10 +103,9 @@ class _CounterViewState extends State<CounterView> {
     );
 
     // Jika user memilih "Reset" (result == true)
-    if (result == true) {
-      setState(() {
-        _controller.reset(widget.username);
-      });
+        if (result == true) {
+      await _controller.reset(widget.username);
+      setState(() {});
     }
   }
 
@@ -345,13 +344,19 @@ class _CounterViewState extends State<CounterView> {
                 children: [
                   FloatingActionButton(
                     heroTag: "minus",
-                    onPressed: () => setState(() => _controller.decrement(widget.username)),
+                    onPressed: () async {
+                      await _controller.decrement(widget.username);
+                      setState(() {});
+                    },
                     child: const Icon(Icons.remove),
                   ),
                   const SizedBox(width: 20),
                   FloatingActionButton(
                     heroTag: "plus",
-                    onPressed: () => setState(() => _controller.increment(widget.username)),
+                    onPressed: () async {
+                      await _controller.increment(widget.username);
+                      setState(() {});
+                    },
                     child: const Icon(Icons.add),
                   ),
                   const SizedBox(width: 20),
